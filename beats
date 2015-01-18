@@ -39,6 +39,26 @@ print response.text
 """
 
 
+def to_duration(s):
+    ret = ''
+    h = s / (60*60)
+    s = s % (60*60)
+    m =  s / 60
+    s =  s % 60
+    if h:
+        ret += '%dh' % h
+    if m:
+        ret += '%dm' % m
+    ret += '%ds' % s
+    return ret
+
+
+def test_to_duration():
+    assert to_duration(30) == '30s'
+    assert to_duration(80) == '1m20s'
+    assert to_duration(7520) == '2h5m20s'
+
+
 URI = 'https://partner.api.beatsmusic.com/v1/api/'
 
 
@@ -122,8 +142,11 @@ def main(config, argv):
         response = beats.playlists_user(config['user_id'])
         for item in reversed(
                 sorted(response['data'], key=lambda x: x['updated_at'])):
-            print '%-22s%s (%s)' % (
-                item['id'], item['name'], len(item['refs']['tracks']))
+            print '%-22s%s (%s:%s)' % (
+                item['id'],
+                item['name'],
+                len(item['refs']['tracks']),
+                to_duration(item['duration']))
 
 
 if __name__ == '__main__':
