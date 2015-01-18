@@ -6,6 +6,7 @@ Usage:
     beats playlists create <name> [--private]
     beats playlists delete <id>
     beats playlists show <id>
+    beats tracks show <id>
 """
 
 
@@ -39,6 +40,12 @@ print response.text
 """
 
 
+def truncate(s, l):
+    if len(s) > l:
+        s = s[:l-3]+'...'
+    return s
+
+
 def to_duration(s):
     ret = ''
     h = s / (60*60)
@@ -59,38 +66,57 @@ def test_to_duration():
     assert to_duration(7520) == '2h5m20s'
 
 
-URI = 'https://partner.api.beatsmusic.com/v1/api/'
+def cached(f):
+    def wrapped(beats, id):
+        if id not in beats.config:
+            beats.config[id] = f(beats, id)
+        return beats.config[id]
+    return wrapped
 
 
 class Beats(object):
-    def __init__(self, token):
-        self.token = token
+    URI = 'https://partner.api.beatsmusic.com/v1/api/'
+    client_id = 'fxkrj7vemnnxva8jhtqb9wt8'
 
-    def request(self, method, path, params=None):
+    def __init__(self, token):
+        self.config = config
+        self.token = config['token']
+
+    def public(self, method, path, params=None):
+        if params is None:
+            params = {}
+        params['client_id'] = Beats.client_id
         response = requests.request(
             method,
-            URI+path,
+            Beats.URI+path,
+            params=params)
+        return self.response(response)
+
+    def private(self, method, path, params=None):
+        response = requests.request(
+            method,
+            Beats.URI+path,
             params=params,
             headers={'Authorization': 'Bearer %s' % self.token})
+        return self.response(response)
 
+    def response(self, response):
         if response.status_code == 200:
             return json.loads(response.text)
-
         print response
         print response.text
 
+    def activities(self):
+        return self.public('GET', 'activities')
+
     def me(self):
-        return self.request('GET', 'me')['result']
+        return self.private('GET', 'me')['result']
 
     def playlists_user(self, user_id):
-        return self.request('GET', 'users/%s/playlists' % user_id)
-
-    def tracks_audio(self, track_id):
-        return self.request(
-            'GET', 'tracks/%s/audio' % track_id, params={'acquire': 1})
+        return self.private('GET', 'users/%s/playlists' % user_id)
 
     def playlists(self, playlist_id):
-        return self.request('GET', 'playlists/%s' % playlist_id)
+        return self.private('GET', 'playlists/%s' % playlist_id)
 
     def playlists_create(self, name, description=None, access=None):
         # access defaults to 'public'
@@ -100,22 +126,22 @@ class Beats(object):
         if access:
             assert access in ('public', 'private')
             params['access'] = access
-        return self.request('POST', 'playlists', params=params)
+        return self.private('POST', 'playlists', params=params)
 
     def playlists_delete(self, playlist_id):
-        return self.request('DELETE', 'playlists/%s' % playlist_id)
+        return self.private('DELETE', 'playlists/%s' % playlist_id)
 
-    # 403: Developer Inactive
-
+    @cached
     def tracks(self, track_id):
-        return self.request('GET', 'tracks/%s' % track_id)
+        return self.public('GET', 'tracks/%s' % track_id)
 
-    def activities(self):
-        return self.request('GET', 'activities')
+    def tracks_audio(self, track_id):
+        return self.private(
+            'GET', 'tracks/%s/audio' % track_id, params={'acquire': 1})
 
 
 def main(config, argv):
-    beats = Beats(config['token'])
+    beats = Beats(config)
 
     if argv['playlists']:
 
@@ -133,10 +159,17 @@ def main(config, argv):
         if argv['show']:
             response = beats.playlists(argv['<id>'])
             item = response['data']
-            print '%-22s%s (%s)' % (
-                item['id'], item['name'], len(item['refs']['tracks']))
+            print '%-22s%s (%s:%s)' % (
+                item['id'],
+                item['name'],
+                len(item['refs']['tracks']),
+                to_duration(item['duration']))
             for track in item['refs']['tracks']:
-                print '    %-12s%s' % (track['id'], track['display'])
+                extra = beats.tracks(track['id'])['data']
+                print '    %-12s %-30s %-20s' % (
+                    track['id'],
+                    truncate(extra['artist_display_name'], 30),
+                    track['display'], )
             return
 
         response = beats.playlists_user(config['user_id'])
@@ -147,6 +180,10 @@ def main(config, argv):
                 item['name'],
                 len(item['refs']['tracks']),
                 to_duration(item['duration']))
+
+    if argv['tracks']:
+        if argv['show']:
+            print beats.tracks(argv['<id>'])
 
 
 if __name__ == '__main__':
