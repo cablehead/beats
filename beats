@@ -7,6 +7,7 @@ Usage:
     beats playlists delete <id>
     beats playlists show <id>
     beats tracks show <id>
+    beats albums show <id>
 """
 
 
@@ -109,6 +110,14 @@ class Beats(object):
     def activities(self):
         return self.public('GET', 'activities')
 
+    def albums(self, album_id):
+        return self.public('GET', 'albums/%s' % album_id)
+
+    def albums_image(self, album_id):
+        return Beats.URI + \
+            ('albums/%s/images/default' % album_id) + \
+            ('?client_id=%s' % Beats.client_id)
+
     def me(self):
         return self.private('GET', 'me')['result']
 
@@ -186,6 +195,10 @@ def main(config, argv):
         if argv['show']:
             print beats.tracks(argv['<id>'])
             print beats.tracks_audio(argv['<id>'])
+
+    if argv['albums']:
+        if argv['show']:
+            print beats.albums_image(argv['<id>'])
 
 
 if __name__ == '__main__':
