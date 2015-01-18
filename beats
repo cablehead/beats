@@ -166,10 +166,11 @@ def main(config, argv):
                 to_duration(item['duration']))
             for track in item['refs']['tracks']:
                 extra = beats.tracks(track['id'])['data']
-                print '    %-12s %-30s %-20s' % (
+                print '  %-12s %-30s %-30s %s' % (
                     track['id'],
                     truncate(extra['artist_display_name'], 30),
-                    track['display'], )
+                    truncate(track['display'], 30),
+                    to_duration(extra['duration']))
             return
 
         response = beats.playlists_user(config['user_id'])
@@ -184,6 +185,7 @@ def main(config, argv):
     if argv['tracks']:
         if argv['show']:
             print beats.tracks(argv['<id>'])
+            print beats.tracks_audio(argv['<id>'])
 
 
 if __name__ == '__main__':
