@@ -1,0 +1,135 @@
+#!/usr/bin/env python
+
+"""
+Usage:
+    beats playlists
+    beats playlists create <name> [--private]
+    beats playlists delete <id>
+    beats playlists show <id>
+"""
+
+
+import shelve
+import json
+import sys
+import os
+
+import requests
+import docopt
+
+
+__version__ = '0.1'
+
+
+"""
+# Auth
+
+uri = 'https://partner.api.beatsmusic.com/oauth2/token/password'
+
+params = {
+    'grant_type': 'password',
+    'client_id': app_key,
+    'client_secret': app_secret,
+    'username': '...',
+    'password': '...', }
+
+response = requests.post(uri, params=params)
+print response
+print response.text
+"""
+
+
+URI = 'https://partner.api.beatsmusic.com/v1/api/'
+
+
+class Beats(object):
+    def __init__(self, token):
+        self.token = token
+
+    def request(self, method, path, params=None):
+        response = requests.request(
+            method,
+            URI+path,
+            params=params,
+            headers={'Authorization': 'Bearer %s' % self.token})
+
+        if response.status_code == 200:
+            return json.loads(response.text)
+
+        print response
+        print response.text
+
+    def me(self):
+        return self.request('GET', 'me')['result']
+
+    def playlists_user(self, user_id):
+        return self.request('GET', 'users/%s/playlists' % user_id)
+
+    def tracks_audio(self, track_id):
+        return self.request(
+            'GET', 'tracks/%s/audio' % track_id, params={'acquire': 1})
+
+    def playlists(self, playlist_id):
+        return self.request('GET', 'playlists/%s' % playlist_id)
+
+    def playlists_create(self, name, description=None, access=None):
+        # access defaults to 'public'
+        params = {'name': name}
+        if description:
+            params['description'] = description
+        if access:
+            assert access in ('public', 'private')
+            params['access'] = access
+        return self.request('POST', 'playlists', params=params)
+
+    def playlists_delete(self, playlist_id):
+        return self.request('DELETE', 'playlists/%s' % playlist_id)
+
+    # 403: Developer Inactive
+
+    def tracks(self, track_id):
+        return self.request('GET', 'tracks/%s' % track_id)
+
+    def activities(self):
+        return self.request('GET', 'activities')
+
+
+def main(config, argv):
+    beats = Beats(config['token'])
+
+    if argv['playlists']:
+
+        if argv['create']:
+            beats.playlists_create(
+                argv['<name>'],
+                description=None,
+                access=argv['--private'] and 'private' or 'public')
+            return
+
+        if argv['delete']:
+            beats.playlists_delete(argv['<id>'])
+            return
+
+        if argv['show']:
+            response = beats.playlists(argv['<id>'])
+            item = response['data']
+            print '%-22s%s (%s)' % (
+                item['id'], item['name'], len(item['refs']['tracks']))
+            for track in item['refs']['tracks']:
+                print '    %-12s%s' % (track['id'], track['display'])
+            return
+
+        response = beats.playlists_user(config['user_id'])
+        for item in reversed(
+                sorted(response['data'], key=lambda x: x['updated_at'])):
+            print '%-22s%s (%s)' % (
+                item['id'], item['name'], len(item['refs']['tracks']))
+
+
+if __name__ == '__main__':
+    config = shelve.open(os.path.expanduser('~/.beats'), 'c')
+    argv = docopt.docopt(__doc__, version=__version__)
+    try:
+        sys.exit(main(config, argv))
+    finally:
+        config.close()
