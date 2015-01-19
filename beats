@@ -328,34 +328,44 @@ def main(config, argv):
 
 
 if __name__ == '__main__':
-    config = shelve.open(os.path.expanduser('~/.beats'), 'c')
-    token = config['token']
-    user_id = config['user_id']
 
     class D(object):
         def __init__(self, target):
             self.target = target
 
-        def get(self, key):
-            return json.loads(self.target.get(key))
+        def get(self, key, default=None):
+            try:
+                return self[key]
+            except KeyError:
+                return default
 
         def __getitem__(self, key):
-            return self.get(key)
+            value = self.target.get(key)
+            if value is None:
+                raise KeyError(key)
+            return json.loads(value)
 
+        def __setitem__(self, key, value):
+            return self.target.put(key, json.dumps(value))
 
     from contextlib import contextmanager
 
-    class Config(object):
+    class Store(object):
         def __init__(self):
             self.env = lmdb.open(
                 os.path.expanduser('~/.beats'), mode=0700, max_dbs=10)
 
         @contextmanager
         def db(self, name, write=False):
-            with config.env.begin(db=self.env.open_db(name)) as txn:
+            with self.env.begin(db=self.env.open_db(name), write=write) as txn:
                 yield D(txn)
 
-    config = Config()
+        def drop(self, name, delete=True):
+            db = store.env.open_db(name)
+            with self.env.begin(write=True) as txn:
+                txn.drop(db, delete=delete)
+
+    store = Store()
 
     """
     with config.env.begin(write=True, db=config.auth) as txn:
@@ -369,9 +379,20 @@ if __name__ == '__main__':
         print json.loads(txn.get('user_id'))
     """
 
-    with config.db('auth') as auth:
+    with store.db('auth') as auth:
         print repr(auth['token'])
         print repr(auth['user_id'])
+
+    # store.drop('foo')
+
+    """
+    with store.db('foo', write=True) as foo:
+        foo['key'] = 24
+
+    with store.db('foo') as foo:
+        print repr(foo['key'])
+    """
+
 
     if False:
         argv = docopt.docopt(__doc__, version=__version__)
