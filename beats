@@ -6,6 +6,7 @@ Usage:
     beats playlists create <name> [--private]
     beats playlists delete <id>
     beats playlists show <id>
+    beats playlists play <id>
     beats playlists update <id> delete <track_id>
     beats tracks show <id>
     beats albums show <id>
@@ -217,6 +218,16 @@ def main(config, argv):
                     to_duration(extra['duration']))
             return
 
+        if argv['play']:
+            response = beats.playlists(argv['<id>'])
+            track_ids = [x['id'] for x in response['data']['refs']['tracks']]
+            import vanilla
+            h = vanilla.Hub()
+            conn = h.tcp.connect(host='localhost', port=10080)
+            conn.send(json.dumps(track_ids))
+            conn.close()
+            return
+
         response = beats.playlists_user(config['user_id'])
         for item in reversed(
                 sorted(response['data'], key=lambda x: x['updated_at'])):
@@ -228,19 +239,13 @@ def main(config, argv):
 
     if argv['tracks']:
         if argv['show']:
-
             id = argv['<id>']
             print beats.tracks(id)
-
-            audio = beats.tracks_audio(id)
 
             import vanilla
             h = vanilla.Hub()
             conn = h.tcp.connect(host='localhost', port=10080)
-            conn.send(json.dumps({
-                'id': id,
-                'host': audio['data']['location'],
-                'asset': audio['data']['resource'], }))
+            conn.send(json.dumps([id]))
             conn.close()
 
     if argv['albums']:
@@ -261,20 +266,39 @@ def main(config, argv):
         serve = h.tcp.listen(host='localhost', port=10080)
         @serve.consume
         def _(conn):
-            updates.send(conn.recv())
+            updates.send(json.loads(conn.recv()))
             conn.close()
+
+        q = []
 
         @b.websocket('/')
         def _(ws):
+
+            def play_next():
+                if q:
+                    id = q.pop()
+                    audio = beats.tracks_audio(id)
+                    data = json.dumps({
+                        'id': id,
+                        'host': audio['data']['location'],
+                        'asset': audio['data']['resource'], })
+                    ws.send(data)
+
             u = updates.subscribe()
+
             try:
                 while True:
                     ch, data = h.select([ws.recver, u])
+
                     print ch, data
+
                     if ch == u:
-                        ws.send(data)
+                        q = data
+                        play_next()
+
                     if ch == ws.recver:
-                        print data
+                        play_next()
+
             except vanilla.Closed:
                 print 'peace'
                 ws.close()
