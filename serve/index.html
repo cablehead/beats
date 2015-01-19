@@ -1,0 +1,65 @@
+<html>
+<body>
+Hi
+</body>
+
+<script src="/script/soundmanager2.js"></script>
+<script>
+
+var ws;
+
+var WS = (function() {
+	var conn;
+
+	function reconnect() {
+		var conn = new WebSocket('ws'+window.location.origin.substring(4))
+
+		conn.onopen = function() {
+			console.log('connnected')
+		};
+
+		conn.onclose = function() {
+			console.log('closed');
+			setTimeout(reconnect(), 1000);
+		};
+
+		conn.onmessage = function(e) {
+			console.log(e.data);
+			console.log(soundManager);
+			var data = window.JSON.parse(e.data);
+			play(data.id, data.host, data.asset);
+
+		};
+	}
+
+	reconnect();
+
+	ret = {};
+	return ret;
+});
+
+
+var sound;
+
+
+soundManager.setup({
+	url: 'swf/',
+	flashVersion: 9,
+	preferFlash: true,
+
+	onready: function() {
+		console.log('hi');
+		ws = WS();
+	}
+});
+
+function play(id, host, asset) {
+	if (sound) {
+		console.log('KIlling old sound');
+		sound.destruct();
+	}
+	sound = soundManager.createSound({id: id, serverURL: host, url: asset});
+	sound.play();
+}
+</script>
+</html>
