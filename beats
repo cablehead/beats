@@ -6,8 +6,10 @@ Usage:
     beats playlists create <name> [--private]
     beats playlists delete <id>
     beats playlists show <id>
+    beats playlists update <id> delete <track_id>
     beats tracks show <id>
     beats albums show <id>
+    beats serve
 """
 
 
@@ -18,6 +20,11 @@ import os
 
 import requests
 import docopt
+
+
+# TODO: remove
+import logging
+logging.basicConfig()
 
 
 __version__ = '0.1'
@@ -140,6 +147,18 @@ class Beats(object):
     def playlists_delete(self, playlist_id):
         return self.private('DELETE', 'playlists/%s' % playlist_id)
 
+    def playlists_image(self, playlist_id):
+        return Beats.URI + \
+            ('playlists/%s/images/default' % playlist_id) + \
+            ('?client_id=%s' % Beats.client_id)
+
+    def playlists_update(self, playlist_id, track_ids):
+        params = {
+            'playlist_id': playlist_id,
+            'track_ids': track_ids, }
+        return self.private(
+            'PUT', 'playlists/%s/tracks' % playlist_id, params=params)
+
     @cached
     def tracks(self, track_id):
         return self.public('GET', 'tracks/%s' % track_id)
@@ -153,6 +172,21 @@ def main(config, argv):
     beats = Beats(config)
 
     if argv['playlists']:
+        if argv['update']:
+            if argv['delete']:
+                id = argv['<id>']
+                track_id = argv['<track_id>']
+                response = beats.playlists(id)
+                current = [x['id'] for x in response['data']['refs']['tracks']]
+
+                if track_id not in current:
+                    print '%s not in playlist' % track_id
+                    return 1
+
+                current.remove(track_id)
+                beats.playlists_update(id, current)
+                return
+            raise
 
         if argv['create']:
             beats.playlists_create(
@@ -168,6 +202,7 @@ def main(config, argv):
         if argv['show']:
             response = beats.playlists(argv['<id>'])
             item = response['data']
+            print beats.playlists_image(argv['<id>'])
             print '%-22s%s (%s:%s)' % (
                 item['id'],
                 item['name'],
@@ -193,12 +228,50 @@ def main(config, argv):
 
     if argv['tracks']:
         if argv['show']:
-            print beats.tracks(argv['<id>'])
-            print beats.tracks_audio(argv['<id>'])
+
+            id = argv['<id>']
+            print beats.tracks(id)
+
+            audio = beats.tracks_audio(id)
+
+            import vanilla
+            h = vanilla.Hub()
+            conn = h.tcp.connect(host='localhost', port=10080)
+            conn.send(json.dumps({
+                'id': id,
+                'host': audio['data']['location'],
+                'asset': audio['data']['resource'], }))
+            conn.close()
 
     if argv['albums']:
         if argv['show']:
             print beats.albums_image(argv['<id>'])
+
+    if argv['serve']:
+        import vanilla
+        h = vanilla.Hub()
+
+        b = h.bean(host='localhost', port=8080)
+        b.static('/', 'serve/index.html')
+        b.static('/swf', 'serve/swf')
+        b.static('/script', 'serve/script')
+
+        updates = h.broadcast()
+
+        serve = h.tcp.listen(host='localhost', port=10080)
+        @serve.consume
+        def _(conn):
+            updates.send(conn.recv())
+            conn.close()
+
+        @b.websocket('/')
+        def _(ws):
+            u = updates.subscribe()
+            for i in u:
+                ws.send(i)
+
+        print 'listening on on http://localhost:8080'
+        h.stop_on_term()
 
 
 if __name__ == '__main__':
