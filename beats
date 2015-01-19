@@ -276,7 +276,7 @@ def main(config, argv):
 
             def play_next():
                 if q:
-                    id = q.pop()
+                    id = q.pop(0)
                     audio = beats.tracks_audio(id)
                     data = json.dumps({
                         'id': id,
