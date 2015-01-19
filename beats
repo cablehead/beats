@@ -240,13 +240,30 @@ def main(config, argv):
     if argv['tracks']:
         if argv['show']:
             id = argv['<id>']
-            print beats.tracks(id)
 
+            data = beats.tracks(id)['data']
+            for key, value in data['refs'].iteritems():
+                if key == 'album':
+                    data[key] = {
+                        'id': value['id'], 'display': value['display']}
+                elif key == 'artists':
+                    data[key] = [
+                        {'id': x['id'], 'display': x['display']}
+                        for x in value]
+                else:
+                    raise Exception(key)
+            del data['refs']
+
+            print data
+
+
+            """
             import vanilla
             h = vanilla.Hub()
             conn = h.tcp.connect(host='localhost', port=10080)
             conn.send(json.dumps([id]))
             conn.close()
+            """
 
     if argv['albums']:
         if argv['show']:
