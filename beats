@@ -2,6 +2,7 @@
 
 """
 Usage:
+    beats init
     beats playlists
     beats playlists create <name> [--private]
     beats playlists delete <id>
@@ -14,7 +15,7 @@ Usage:
 """
 
 
-import shelve
+import getpass
 import json
 import sys
 import os
@@ -30,24 +31,6 @@ logging.basicConfig()
 
 
 __version__ = '0.1'
-
-
-"""
-# Auth
-
-uri = 'https://partner.api.beatsmusic.com/oauth2/token/password'
-
-params = {
-    'grant_type': 'password',
-    'client_id': app_key,
-    'client_secret': app_secret,
-    'username': '...',
-    'password': '...', }
-
-response = requests.post(uri, params=params)
-print response
-print response.text
-"""
 
 
 def truncate(s, l):
@@ -86,11 +69,26 @@ def cached(f):
 
 class Beats(object):
     URI = 'https://partner.api.beatsmusic.com/v1/api/'
-    client_id = 'fxkrj7vemnnxva8jhtqb9wt8'
 
-    def __init__(self, token):
-        self.config = config
-        self.token = config['token']
+    client_id = 'fxkrj7vemnnxva8jhtqb9wt8'
+    client_secret = 'naKEFtfMVHKGfpKeJP89Fs9n'
+
+    def __init__(self, store):
+        self.store = store
+        with store.db('auth') as auth:
+            self.token = auth.get('token')
+            self.user_id = auth.get('user_id')
+
+    def auth(self, username, password):
+        uri = 'https://partner.api.beatsmusic.com/oauth2/token/password'
+        params = {
+            'grant_type': 'password',
+            'client_id': Beats.client_id,
+            'client_secret': Beats.client_secret,
+            'username': username,
+            'password': password, }
+        response = requests.post(uri, params=params)
+        return self.response(response)
 
     def public(self, method, path, params=None):
         if params is None:
@@ -170,8 +168,24 @@ class Beats(object):
             'GET', 'tracks/%s/audio' % track_id, params={'acquire': 1})
 
 
-def main(config, argv):
-    beats = Beats(config)
+def main(store, argv):
+
+    beats = Beats(store)
+
+    if not beats.token and not argv['init']:
+        print "run: 'beats init' first to connect your account"
+        return 1
+
+    if argv['init']:
+        username = raw_input('beats username: ')
+        password = getpass.getpass('beats password: ')
+        response = beats.auth(username, password)['result']
+        beats.token = response['access_token']
+        beats.user_id = beats.me()['user_context']
+        with store.db('auth', write=True) as auth:
+            auth['token'] = beats.token
+            auth['user_id'] = beats.user_id
+        return
 
     if argv['playlists']:
         if argv['update']:
@@ -229,7 +243,7 @@ def main(config, argv):
             conn.close()
             return
 
-        response = beats.playlists_user(config['user_id'])
+        response = beats.playlists_user(beats.user_id)
         for item in reversed(
                 sorted(response['data'], key=lambda x: x['updated_at'])):
             print '%-22s%s (%s:%s)' % (
@@ -367,36 +381,5 @@ if __name__ == '__main__':
 
     store = Store()
 
-    """
-    with config.env.begin(write=True, db=config.auth) as txn:
-        txn.put('token', json.dumps(token))
-        txn.put('user_id', json.dumps(user_id))
-    """
-
-    """
-    with config.env.begin(db=config.auth) as txn:
-        print json.loads(txn.get('token'))
-        print json.loads(txn.get('user_id'))
-    """
-
-    with store.db('auth') as auth:
-        print repr(auth['token'])
-        print repr(auth['user_id'])
-
-    # store.drop('foo')
-
-    """
-    with store.db('foo', write=True) as foo:
-        foo['key'] = 24
-
-    with store.db('foo') as foo:
-        print repr(foo['key'])
-    """
-
-
-    if False:
-        argv = docopt.docopt(__doc__, version=__version__)
-        try:
-            sys.exit(main(config, argv))
-        finally:
-            config.close()
+    argv = docopt.docopt(__doc__, version=__version__)
+    sys.exit(main(store, argv))
