@@ -260,6 +260,7 @@ def main(config, argv):
         b.static('/', 'serve/index.html')
         b.static('/swf', 'serve/swf')
         b.static('/script', 'serve/script')
+        b.static('/css', 'serve/css')
 
         updates = h.broadcast()
 
