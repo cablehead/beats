@@ -267,8 +267,18 @@ def main(config, argv):
         @b.websocket('/')
         def _(ws):
             u = updates.subscribe()
-            for i in u:
-                ws.send(i)
+            try:
+                while True:
+                    ch, data = h.select([ws.recver, u])
+                    print ch, data
+                    if ch == u:
+                        ws.send(data)
+                    if ch == ws.recver:
+                        print data
+            except vanilla.Closed:
+                print 'peace'
+                ws.close()
+                u.close()
 
         print 'listening on on http://localhost:8080'
         h.stop_on_term()

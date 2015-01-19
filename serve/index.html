@@ -12,7 +12,7 @@ var WS = (function() {
 	var conn;
 
 	function reconnect() {
-		var conn = new WebSocket('ws'+window.location.origin.substring(4))
+		conn = new WebSocket('ws'+window.location.origin.substring(4))
 
 		conn.onopen = function() {
 			console.log('connnected')
@@ -34,7 +34,11 @@ var WS = (function() {
 
 	reconnect();
 
-	ret = {};
+	ret = {
+		send: function(message) {
+			conn.send(message);
+		}
+	};
 	return ret;
 });
 
@@ -59,7 +63,9 @@ function play(id, host, asset) {
 		sound.destruct();
 	}
 	sound = soundManager.createSound({id: id, serverURL: host, url: asset});
-	sound.play();
+	sound.play({
+		onfinish: function () {ws.send(id)},
+	});
 }
 </script>
 </html>
