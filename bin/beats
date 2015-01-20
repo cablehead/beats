@@ -10,6 +10,7 @@ Usage:
     beats playlists play <id>
     beats playlists update <id> delete <track_id>
     beats tracks show <id>
+    beats tracks search <query>
     beats albums show <id>
     beats serve
 """
@@ -170,6 +171,12 @@ class Beats(object):
         return self.private(
             'GET', 'tracks/%s/audio' % track_id, params={'acquire': 1})
 
+    def search(self, type, query):
+        # type: The type of entity for the search.
+        # Values: genre, artist, album, track, playlist, user
+        return self.public(
+            'GET', 'search', params={'type': type, 'q': query, 'limit': 200})
+
 
 def main(store, argv):
 
@@ -256,6 +263,15 @@ def main(store, argv):
                 to_duration(item['duration']))
 
     if argv['tracks']:
+        if argv['search']:
+            data = beats.search('track', argv['<query>'])['data']
+            for item in data:
+                print '%-14s %-32s %s' % (
+                    item['id'],
+                    truncate(item['display'], 31),
+                    item['detail'])
+            return
+
         if argv['show']:
             id = argv['<id>']
 
@@ -274,13 +290,11 @@ def main(store, argv):
 
             print data
 
-            """
             import vanilla
             h = vanilla.Hub()
             conn = h.tcp.connect(host='localhost', port=10080)
             conn.send(json.dumps([id]))
             conn.close()
-            """
 
     if argv['albums']:
         if argv['show']:
