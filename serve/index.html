@@ -87,7 +87,7 @@ function play(id, host, asset) {
 	}
 	sound = soundManager.createSound({id: id, serverURL: host, url: asset});
 	sound.play({
-		onfinish: function () {ws.send(id)},
+		onfinish: function () {ws.send(window.JSON.stringify(['play_next', [], {}]))},
 	});
 }
 </script>

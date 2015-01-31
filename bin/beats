@@ -8,6 +8,7 @@ Usage:
     beats playlists delete <id>
     beats playlists show <id>
     beats playlists play <id>
+    beats playlists update <id> append <track_id>
     beats playlists update <id> delete <track_id>
     beats tracks show <id>
     beats tracks search <query>
@@ -15,6 +16,7 @@ Usage:
     beats artists search <query>
     beats artists show <id>
     beats serve
+    beats controller next
 """
 
 
@@ -71,6 +73,18 @@ def cached(f):
                 cache[id] = f(beats, id)
             return cache[id]
     return wrapped
+
+
+class Controller(object):
+    def __init__(self):
+        import vanilla
+        h = vanilla.Hub()
+        self.conn = h.tcp.connect(host='localhost', port=10080)
+
+    def __getattr__(self, name):
+        def f(*a, **kw):
+            self.conn.send(json.dumps((name, a, kw)))
+        return f
 
 
 class Beats(object):
@@ -180,6 +194,13 @@ class Beats(object):
         return self.private(
             'PUT', 'playlists/%s/tracks' % playlist_id, params=params)
 
+    def playlists_append(self, playlist_id, track_ids):
+        params = {
+            'playlist_id': playlist_id,
+            'track_ids': track_ids, }
+        return self.private(
+            'POST', 'playlists/%s/tracks' % playlist_id, params=params)
+
     @cached
     def tracks(self, track_id):
         return self.public('GET', 'tracks/%s' % track_id)
@@ -216,6 +237,10 @@ def main(store, argv):
 
     if argv['playlists']:
         if argv['update']:
+            if argv['append']:
+                beats.playlists_append(argv['<id>'], [argv['<track_id>']])
+                return
+
             if argv['delete']:
                 id = argv['<id>']
                 track_id = argv['<track_id>']
@@ -328,12 +353,7 @@ def main(store, argv):
                 print "   ", item
 
             ids = [item['id'] for item in data]
-
-            import vanilla
-            h = vanilla.Hub()
-            conn = h.tcp.connect(host='localhost', port=10080)
-            conn.send(json.dumps(ids))
-            conn.close()
+            Controller().play(ids)
             return
 
         if argv['search']:
@@ -344,9 +364,45 @@ def main(store, argv):
                 print s
         return
 
+    if argv['controller']:
+        if argv['next']:
+            Controller().play_next()
+        return
+
     if argv['serve']:
         import vanilla
+
         h = vanilla.Hub()
+
+        class API(object):
+            def __init__(self):
+                self.q = []
+                self.controller = h.router()
+                self.commands = h.broadcast()
+
+                @h.spawn
+                def _():
+                    for data in self.controller.recver:
+                        print data
+                        name, a, kw = json.loads(data)
+                        getattr(self, name)(*a, **kw)
+
+            def play(self, ids):
+                self.q = ids
+                self.play_next()
+
+            def play_next(self):
+                if self.q:
+                    id = self.q.pop(0)
+                    print beats.tracks(id)
+                    audio = beats.tracks_audio(id)
+                    data = json.dumps({
+                        'id': id,
+                        'host': audio['data']['location'],
+                        'asset': audio['data']['resource'], })
+                    self.commands.send(data)
+
+        api = API()
 
         b = h.bean(host='0.0.0.0', port=8080)
         b.static('/', 'serve/index.html')
@@ -354,50 +410,21 @@ def main(store, argv):
         b.static('/script', 'serve/script')
         b.static('/css', 'serve/css')
 
-        updates = h.broadcast()
-
         serve = h.tcp.listen(host='localhost', port=10080)
 
         @serve.consume
         def _(conn):
-            updates.send(json.loads(conn.recv()))
+            api.controller.send(conn.recv())
             conn.close()
-
-        q = []
 
         @b.websocket('/')
         def _(ws):
+            ws.pipe(api.controller)
 
-            def play_next():
-                if q:
-                    id = q.pop(0)
-                    print beats.tracks(id)
-                    audio = beats.tracks_audio(id)
-                    data = json.dumps({
-                        'id': id,
-                        'host': audio['data']['location'],
-                        'asset': audio['data']['resource'], })
-                    ws.send(data)
+            commands = api.commands.subscribe()
 
-            u = updates.subscribe()
-
-            try:
-                while True:
-                    ch, data = h.select([ws.recver, u])
-
-                    print ch, data
-
-                    if ch == u:
-                        q = data
-                        play_next()
-
-                    if ch == ws.recver:
-                        play_next()
-
-            except vanilla.Closed:
-                print 'peace'
-                ws.close()
-                u.close()
+            for command in commands:
+                ws.send(command)
 
         print 'listening on on http://0.0.0.0:8080'
         h.stop_on_term()
