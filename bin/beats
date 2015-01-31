@@ -12,6 +12,8 @@ Usage:
     beats tracks show <id>
     beats tracks search <query>
     beats albums show <id>
+    beats artists search <query>
+    beats artists show <id>
     beats serve
 """
 
@@ -123,6 +125,21 @@ class Beats(object):
 
     def albums(self, album_id):
         return self.public('GET', 'albums/%s' % album_id)
+
+    def artists(self, artist_id):
+        return self.public('GET', 'artists/%s' % artist_id)
+
+    def artists_essential_albums(self, artist_id):
+        return self.public('GET', 'artists/%s/essential_albums' % artist_id)
+
+    def artists_tracks(self, artist_id):
+        return self.public('GET', 'artists/%s/tracks' % artist_id)
+
+    def artists_playlists(self, artist_id):
+        return self.public('GET', 'artists/%s/playlists' % artist_id)
+
+    def artists_editorial_playlists(self, artist_id):
+        return self.public('GET', 'artists/%s/editorial_playlists' % artist_id)
 
     def albums_image(self, album_id):
         return Beats.URI + \
@@ -290,15 +307,42 @@ def main(store, argv):
 
             print data
 
+            """
             import vanilla
             h = vanilla.Hub()
             conn = h.tcp.connect(host='localhost', port=10080)
             conn.send(json.dumps([id]))
             conn.close()
+            """
 
     if argv['albums']:
         if argv['show']:
             print beats.albums_image(argv['<id>'])
+            return
+
+    if argv['artists']:
+        if argv['show']:
+            print beats.artists(argv['<id>'])
+            data = beats.artists_tracks(argv['<id>'])['data']
+            for item in data:
+                print "   ", item
+
+            ids = [item['id'] for item in data]
+
+            import vanilla
+            h = vanilla.Hub()
+            conn = h.tcp.connect(host='localhost', port=10080)
+            conn.send(json.dumps(ids))
+            conn.close()
+            return
+
+        if argv['search']:
+            data = beats.search('artist', argv['<query>'])['data']
+            for item in data:
+                name = item['display']
+                s = '%-14s %-32s %s' % (item['id'], name, item['detail'])
+                print s
+        return
 
     if argv['serve']:
         import vanilla
@@ -327,6 +371,7 @@ def main(store, argv):
             def play_next():
                 if q:
                     id = q.pop(0)
+                    print beats.tracks(id)
                     audio = beats.tracks_audio(id)
                     data = json.dumps({
                         'id': id,
