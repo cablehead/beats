@@ -287,12 +287,8 @@ def main(store, argv):
 
         if argv['play']:
             response = beats.playlists(argv['<id>'])
-            track_ids = [x['id'] for x in response['data']['refs']['tracks']]
-            import vanilla
-            h = vanilla.Hub()
-            conn = h.tcp.connect(host='localhost', port=10080)
-            conn.send(json.dumps(track_ids))
-            conn.close()
+            ids = [x['id'] for x in response['data']['refs']['tracks']]
+            Controller().play(ids)
             return
 
         response = beats.playlists_user(beats.user_id)
