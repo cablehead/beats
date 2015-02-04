@@ -17,6 +17,7 @@ Usage:
     beats artists show <id>
     beats serve
     beats controller next
+    beats controller toggle-pause
 """
 
 
@@ -363,7 +364,11 @@ def main(store, argv):
     if argv['controller']:
         if argv['next']:
             Controller().play_next()
-        return
+            return
+
+        if argv['toggle-pause']:
+            Controller().toggle_pause()
+            return
 
     if argv['serve']:
         import vanilla
@@ -392,11 +397,17 @@ def main(store, argv):
                     id = self.q.pop(0)
                     print beats.tracks(id)
                     audio = beats.tracks_audio(id)
-                    data = json.dumps({
+                    data = json.dumps(['play', {
                         'id': id,
                         'host': audio['data']['location'],
-                        'asset': audio['data']['resource'], })
+                        'asset': audio['data']['resource'], }])
+                    print data
                     self.commands.send(data)
+
+            def toggle_pause(self):
+                data = json.dumps(['togglePause', {}])
+                print data
+                self.commands.send(data)
 
         api = API()
 

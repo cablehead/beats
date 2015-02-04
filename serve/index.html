@@ -47,11 +47,10 @@ var WS = (function() {
 		};
 
 		conn.onmessage = function(e) {
-			console.log(e.data);
-			console.log(soundManager);
 			var data = window.JSON.parse(e.data);
-			play(data.id, data.host, data.asset);
-
+			var method = data[0], options = data[1];
+			console.log(method, options);
+			api[method](options);
 		};
 	}
 
@@ -68,7 +67,6 @@ var WS = (function() {
 
 var sound;
 
-
 soundManager.setup({
 	url: 'swf/',
 	flashVersion: 9,
@@ -80,15 +78,26 @@ soundManager.setup({
 	}
 });
 
-function play(id, host, asset) {
-	if (sound) {
-		console.log('KIlling old sound');
-		sound.destruct();
+var api = {
+	play: function (options) {
+		if (sound) {
+			console.log('KIlling old sound');
+			sound.destruct();
+		}
+		sound = soundManager.createSound(
+			{id: options.id, serverURL: options.host, url: options.asset});
+		sound.play({
+			onfinish: function () {ws.send(window.JSON.stringify(['play_next', [], {}]))},
+		});
+	},
+
+	togglePause: function (options) {
+		if (sound) {
+			console.log('togglePause');
+			sound.togglePause();
+		}
 	}
-	sound = soundManager.createSound({id: id, serverURL: host, url: asset});
-	sound.play({
-		onfinish: function () {ws.send(window.JSON.stringify(['play_next', [], {}]))},
-	});
 }
+
 </script>
 </html>
